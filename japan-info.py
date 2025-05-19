@@ -1,91 +1,70 @@
-from flask import Flask, jsonify
-from datetime import datetime, timedelta, date
+from flask import Flask, Response
 import requests
-import pytz
+import json
+from datetime import datetime, timedelta, date
 
 app = Flask(__name__)
 
-# ====== 祝日数据（可自行更新扩展）======
-JAPAN_HOLIDAYS = [
-    {"name": "海の日", "date": "2025-07-21"},
-    {"name": "山の日", "date": "2025-08-11"},
-    {"name": "敬老の日", "date": "2025-09-15"},
-    {"name": "秋分の日", "date": "2025-09-23"},
-    {"name": "スポーツの日", "date": "2025-10-13"},
-    {"name": "文化の日", "date": "2025-11-03"},
-    {"name": "勤労感謝の日", "date": "2025-11-23"},
-    {"name": "天皇誕生日", "date": "2025-12-23"},
+# 日本法定节日（示例）
+JAPANESE_HOLIDAYS = [
+    {"name": "海の日", "date": date(2025, 7, 21)},
+    {"name": "山の日", "date": date(2025, 8, 11)},
+    {"name": "敬老の日", "date": date(2025, 9, 15)},
 ]
 
-# ====== 获取日语星期几 ======
-def get_japanese_weekday(dt):
-    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    return weekdays[dt.weekday()]
+def get_next_weekend(today):
+    weekday = today.weekday()
+    return (5 - weekday) % 7 if weekday < 5 else 0
 
-# ====== 获取下一个周六还有几天 ======
-def get_days_to_weekend(today):
-    days_ahead = (5 - today.weekday()) % 7
-    return days_ahead if days_ahead != 0 else 7
-
-# ====== 计算两个日期之间的天数差 ======
-def days_between(date1, date2):
-    return (date2 - date1).days
-
-# ====== 获取汇率（备用接口 open.er-api.com） ======
-def get_jpy_to_cny():
+def get_exchange_rate():
     try:
-        response = requests.get("https://open.er-api.com/v6/latest/JPY", timeout=5)
-        response.raise_for_status()
-        data = response.json()
+        res = requests.get("https://api.exchangerate.host/latest?base=JPY&symbols=CNY", timeout=5)
+        data = res.json()
         rate = data["rates"]["CNY"]
-        result = round(rate * 10000, 2)
-        timestamp = datetime.fromtimestamp(data["time_last_update_unix"], pytz.timezone("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M")
-        return result, timestamp
-    except Exception as e:
-        print("汇率获取失败：", e)
+        jpy_to_cny = round(rate * 10000, 2)
+        update_time = datetime.strptime(data["date"], "%Y-%m-%d").strftime("%Y-%m-%d %H:%M")
+        return jpy_to_cny, update_time
+    except Exception:
         return None, None
 
-# ====== 主API入口 ======
 @app.route("/api/japan-info")
 def japan_info():
-    tz = pytz.timezone("Asia/Tokyo")
-    now = datetime.now(tz)
-    today_str = now.strftime(f"%Y年%-m月%-d日（{get_japanese_weekday(now)}）")
-    today = now.date()
+    today = date.today()
 
-    # 找出接下来的三个祝日
-    upcoming = [h for h in JAPAN_HOLIDAYS if datetime.strptime(h["date"], "%Y-%m-%d").date() >= today][:3]
+    # 下一个节日
+    holidays = [h for h in JAPANESE_HOLIDAYS if h["date"] > today]
+    days_to_next = (holidays[0]["date"] - today).days if holidays else None
 
-    # 获取汇率
-    jpy_cny, exchange_time = get_jpy_to_cny()
+    # 月底剩余
+    if today.month < 12:
+        next_month_start = date(today.year, today.month + 1, 1)
+    else:
+        next_month_start = date(today.year + 1, 1, 1)
+    days_to_month_end = (next_month_start - timedelta(days=1) - today).days
 
-    # 计算本月最后一天
-    next_month = today.replace(day=28) + timedelta(days=4)
-    month_end = next_month.replace(day=1) - timedelta(days=1)
+    # 汇率
+    jpy_to_cny, exchange_time = get_exchange_rate()
 
     response = {
-        "today": today_str,
-        "next_holiday_1_name": upcoming[0]["name"] if len(upcoming) > 0 else None,
-        "next_holiday_1_date": datetime.strptime(upcoming[0]["date"], "%Y-%m-%d").strftime("%-m月%-d日（{}）").format(get_japanese_weekday(datetime.strptime(upcoming[0]["date"], "%Y-%m-%d"))) if len(upcoming) > 0 else None,
-        "next_holiday_2_name": upcoming[1]["name"] if len(upcoming) > 1 else None,
-        "next_holiday_2_date": datetime.strptime(upcoming[1]["date"], "%Y-%m-%d").strftime("%-m月%-d日（{}）").format(get_japanese_weekday(datetime.strptime(upcoming[1]["date"], "%Y-%m-%d"))) if len(upcoming) > 1 else None,
-        "next_holiday_3_name": upcoming[2]["name"] if len(upcoming) > 2 else None,
-        "next_holiday_3_date": datetime.strptime(upcoming[2]["date"], "%Y-%m-%d").strftime("%-m月%-d日（{}）").format(get_japanese_weekday(datetime.strptime(upcoming[2]["date"], "%Y-%m-%d"))) if len(upcoming) > 2 else None,
-        "days_to_next": days_between(today, datetime.strptime(upcoming[0]["date"], "%Y-%m-%d").date()) if len(upcoming) > 0 else None,
-        "days_to_weekend": get_days_to_weekend(today),
-        "days_to_month_end": days_between(today, month_end),
-        "days_to_year_end": days_between(today, date(today.year, 12, 31)),
-        "jpy_to_cny": jpy_cny,
+        "today": today.strftime("%Y年%-m月%-d日（%a）"),
+        "next_holiday_1_name": holidays[0]["name"] if len(holidays) > 0 else "",
+        "next_holiday_1_date": holidays[0]["date"].strftime("%-m月%-d日（月）") if len(holidays) > 0 else "",
+        "next_holiday_2_name": holidays[1]["name"] if len(holidays) > 1 else "",
+        "next_holiday_2_date": holidays[1]["date"].strftime("%-m月%-d日（月）") if len(holidays) > 1 else "",
+        "next_holiday_3_name": holidays[2]["name"] if len(holidays) > 2 else "",
+        "next_holiday_3_date": holidays[2]["date"].strftime("%-m月%-d日（月）") if len(holidays) > 2 else "",
+        "days_to_next": days_to_next,
+        "days_to_weekend": get_next_weekend(today),
+        "days_to_month_end": days_to_month_end,
+        "days_to_year_end": (date(today.year + 1, 1, 1) - today).days,
+        "jpy_to_cny": jpy_to_cny,
         "exchange_update_time": exchange_time
     }
 
-    return jsonify(response)
+    return Response(
+        json.dumps(response, ensure_ascii=False),
+        content_type='application/json; charset=utf-8'
+    )
 
-# ====== 欢迎页 ======
-@app.route("/")
-def index():
-    return jsonify({"message": "Japan Info API is running 🚀"})
-
-# ====== 启动 ======
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
