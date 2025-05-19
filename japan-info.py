@@ -18,31 +18,29 @@ def get_next_weekend(today):
 
 def get_exchange_rate():
     try:
-        res = requests.get("https://api.exchangerate.host/latest?base=JPY&symbols=CNY", timeout=5)
+        res = requests.get("https://open.er-api.com/v6/latest/JPY", timeout=5)
         data = res.json()
         rate = data["rates"]["CNY"]
         jpy_to_cny = round(rate * 10000, 2)
-        update_time = datetime.strptime(data["date"], "%Y-%m-%d").strftime("%Y-%m-%d %H:%M")
+        update_time = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
         return jpy_to_cny, update_time
-    except Exception:
+    except Exception as e:
+        print("⚠️ 汇率获取失败：", e)
         return None, None
 
 @app.route("/api/japan-info")
 def japan_info():
     today = date.today()
 
-    # 下一个节日
     holidays = [h for h in JAPANESE_HOLIDAYS if h["date"] > today]
     days_to_next = (holidays[0]["date"] - today).days if holidays else None
 
-    # 月底剩余
     if today.month < 12:
         next_month_start = date(today.year, today.month + 1, 1)
     else:
         next_month_start = date(today.year + 1, 1, 1)
     days_to_month_end = (next_month_start - timedelta(days=1) - today).days
 
-    # 汇率
     jpy_to_cny, exchange_time = get_exchange_rate()
 
     response = {
