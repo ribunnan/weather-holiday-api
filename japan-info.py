@@ -52,9 +52,13 @@ def japan_info():
 
     # 找出接下来的三个祝日
     upcoming = [h for h in JAPAN_HOLIDAYS if datetime.strptime(h["date"], "%Y-%m-%d").date() >= today][:3]
-    
+
     # 获取汇率
     jpy_cny, exchange_time = get_jpy_to_cny()
+
+    # 计算本月最后一天
+    next_month = today.replace(day=28) + timedelta(days=4)
+    month_end = next_month.replace(day=1) - timedelta(days=1)
 
     response = {
         "today": today_str,
@@ -66,7 +70,7 @@ def japan_info():
         "next_holiday_3_date": datetime.strptime(upcoming[2]["date"], "%Y-%m-%d").strftime("%-m月%-d日（{}）").format(get_japanese_weekday(datetime.strptime(upcoming[2]["date"], "%Y-%m-%d"))) if len(upcoming) > 2 else None,
         "days_to_next": days_between(today, datetime.strptime(upcoming[0]["date"], "%Y-%m-%d").date()) if len(upcoming) > 0 else None,
         "days_to_weekend": get_days_to_weekend(today),
-        "days_to_month_end": days_between(today, date(today.year, today.month, 28) + timedelta(days=4)).days - ((date(today.year, today.month, 28) + timedelta(days=4)).day - 1 - 27),
+        "days_to_month_end": days_between(today, month_end),
         "days_to_year_end": days_between(today, date(today.year, 12, 31)),
         "jpy_to_cny": jpy_cny,
         "exchange_update_time": exchange_time
