@@ -31,14 +31,15 @@ def get_days_to_weekend(today):
 def days_between(date1, date2):
     return (date2 - date1).days
 
-# ====== 获取汇率（ExchangeRate.host） ======
+# ====== 获取汇率（备用接口 open.er-api.com） ======
 def get_jpy_to_cny():
     try:
-        response = requests.get("https://api.exchangerate.host/convert?from=JPY&to=CNY&amount=10000", timeout=5)
+        response = requests.get("https://open.er-api.com/v6/latest/JPY", timeout=5)
         response.raise_for_status()
         data = response.json()
-        result = round(data["result"], 2)
-        timestamp = datetime.now(pytz.timezone("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M")
+        rate = data["rates"]["CNY"]
+        result = round(rate * 10000, 2)
+        timestamp = datetime.fromtimestamp(data["time_last_update_unix"], pytz.timezone("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M")
         return result, timestamp
     except Exception as e:
         print("汇率获取失败：", e)
@@ -79,6 +80,11 @@ def japan_info():
     }
 
     return jsonify(response)
+
+# ====== 欢迎页 ======
+@app.route("/")
+def index():
+    return jsonify({"message": "Japan Info API is running 🚀"})
 
 # ====== 启动 ======
 if __name__ == "__main__":
