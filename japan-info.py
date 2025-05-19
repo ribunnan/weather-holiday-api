@@ -34,12 +34,14 @@ def days_between(date1, date2):
 # ====== 获取汇率（ExchangeRate.host） ======
 def get_jpy_to_cny():
     try:
-        response = requests.get("https://api.exchangerate.host/convert?from=JPY&to=CNY&amount=10000")
+        response = requests.get("https://api.exchangerate.host/convert?from=JPY&to=CNY&amount=10000", timeout=5)
+        response.raise_for_status()
         data = response.json()
         result = round(data["result"], 2)
         timestamp = datetime.now(pytz.timezone("Asia/Tokyo")).strftime("%Y-%m-%d %H:%M")
         return result, timestamp
-    except:
+    except Exception as e:
+        print("汇率获取失败：", e)
         return None, None
 
 # ====== 主API入口 ======
